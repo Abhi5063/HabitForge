@@ -1,0 +1,249 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                String   @id @default(cuid())
+  email             String   @unique
+  username          String   @unique
+  displayName       String
+  avatarEmoji       String   @default("🔥")
+  passwordHash      String?
+  googleId          String?  @unique
+  githubId          String?  @unique
+  totalXP           Int      @default(0)
+  currentLevel      Int      @default(1)
+  longestStreak     Int      @default(0)
+  isPublic          Boolean  @default(true)
+  showOnLeaderboard Boolean  @default(true)
+  timezone          String   @default("UTC")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  habits            Habit[]
+  completions       HabitCompletion[]
+  userBadges        UserBadge[]
+  sentRequests      Friendship[]          @relation("Requester")
+  receivedRequests  Friendship[]          @relation("Addressee")
+  createdGroups     Group[]
+  groupMembers      GroupMember[]
+  pathPlans         PathPlan[]
+  pathTaskDone      PathTaskCompletion[]
+  notifications     UserNotification[]
+  pushSubscriptions PushSubscription[]
+  refreshTokens     RefreshToken[]
+}
+
+model Habit {
+  id              String    @id @default(cuid())
+  userId          String
+  title           String
+  description     String?
+  category        String    @default("General")
+  frequency       String    @default("DAILY")
+  targetCount     Int       @default(1)
+  color           String    @default("#FF6B00")
+  icon            String    @default("⭐")
+  xpPerComplete   Int       @default(50)
+  currentStreak   Int       @default(0)
+  longestStreak   Int       @default(0)
+  lastCompletedAt DateTime?
+  isArchived      Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  completions HabitCompletion[]
+}
+
+model HabitCompletion {
+  id          String   @id @default(cuid())
+  habitId     String
+  userId      String
+  xpEarned    Int
+  streakDay   Int
+  multiplier  Float    @default(1.0)
+  note        String?
+  completedAt DateTime @default(now())
+
+  habit Habit @relation(fields: [habitId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, completedAt])
+  @@index([habitId, completedAt])
+}
+
+model Badge {
+  id            String @id @default(cuid())
+  badgeKey      String @unique
+  name          String
+  description   String
+  icon          String
+  rarity        String @default("common")
+  criteriaType  String
+  criteriaValue Int
+
+  userBadges UserBadge[]
+}
+
+model UserBadge {
+  id         String   @id @default(cuid())
+  userId     String
+  badgeId    String
+  unlockedAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  badge Badge @relation(fields: [badgeId], references: [id])
+
+  @@unique([userId, badgeId])
+}
+
+model Friendship {
+  id          String   @id @default(cuid())
+  requesterId String
+  addresseeId String
+  status      String   @default("PENDING")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  requester User @relation("Requester", fields: [requesterId], references: [id], onDelete: Cascade)
+  addressee User @relation("Addressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+
+  @@unique([requesterId, addresseeId])
+}
+
+model Group {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  icon        String    @default("🏆")
+  ownerId     String
+  isPublic    Boolean   @default(true)
+  targetXP    Int       @default(10000)
+  currentXP   Int       @default(0)
+  endsAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  owner   User          @relation(fields: [ownerId], references: [id])
+  members GroupMember[]
+}
+
+model GroupMember {
+  id       String   @id @default(cuid())
+  groupId  String
+  userId   String
+  role     String   @default("MEMBER")
+  joinedAt DateTime @default(now())
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+}
+
+model PathPlan {
+  id           String    @id @default(cuid())
+  userId       String
+  title        String
+  goal         String
+  durationDays Int
+  dailyMinutes Int       @default(60)
+  geminiPrompt String    @db.Text
+  status       String    @default("ACTIVE")
+  currentDay   Int       @default(1)
+  totalXP      Int       @default(0)
+  startedAt    DateTime  @default(now())
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  user        User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks       PathTask[]
+  completions PathTaskCompletion[]
+}
+
+model PathTask {
+  id               String   @id @default(cuid())
+  pathId           String
+  dayNumber        Int
+  weekNumber       Int
+  title            String
+  description      String   @db.Text
+  resources        Json?
+  xpReward         Int      @default(100)
+  estimatedMinutes Int      @default(60)
+  taskType         String   @default("LEARN")
+  createdAt        DateTime @default(now())
+
+  path        PathPlan             @relation(fields: [pathId], references: [id], onDelete: Cascade)
+  completions PathTaskCompletion[]
+
+  @@unique([pathId, dayNumber])
+}
+
+model PathTaskCompletion {
+  id       String   @id @default(cuid())
+  taskId   String
+  pathId   String
+  userId   String
+  xpEarned Int
+  note     String?
+  rating   Int?
+  doneAt   DateTime @default(now())
+
+  task PathTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  path PathPlan @relation(fields: [pathId], references: [id], onDelete: Cascade)
+  user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+}
+
+model UserNotification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  body      String
+  data      Json?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PasswordResetOTP {
+  id        String   @id @default(cuid())
+  email     String
+  otpHash   String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([email])
+}
